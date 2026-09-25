@@ -86,9 +86,87 @@ class LoadsRequest(BaseModel):
     m_da: float = Field(1.0, gt=0.0, description="干空气质量流量 kg/s")
 
 
+# ---- 多级串联链 -------------------------------------------------------------
+
+
+class ChainStageInput(BaseModel):
+    """串联链中一级的已知量。
+
+    完整给法与 ``/coil`` 一致（ADP+BF / 完整出风 / 目标温度+目标SHR /
+    BF+目标温度 / BF+目标SHR）。给了全链 ``target`` 时，本级还可以只给
+    一半（只给 ``bf``、只给 ``t_adp_c``、只给 ``target_t_out_c``、只给
+    ``target_shr``）或什么都不给，由链级反推解出缺的装置露点/旁通系数。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(None, description="级名（如 预冷/深度除湿），仅标识用")
+    t_adp_c: float | None = Field(None, description="本级装置露点温度 °C")
+    bf: float | None = Field(None, description="本级旁通系数，0~1")
+    target_t_out_c: float | None = Field(None, description="本级目标出风干球温度 °C")
+    target_shr: float | None = Field(None, description="本级目标显热比，(0,1]")
+    outlet: StateInput | None = Field(None, description="本级目标出风状态")
+
+
+class ChainTargetInput(BaseModel):
+    """全链最终目标：完整出风状态，或目标出风温度 + 目标显热比（二选一）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    outlet: StateInput | None = Field(None, description="全链最终目标出风状态")
+    target_t_out_c: float | None = Field(None, description="全链目标出风干球温度 °C")
+    target_shr: float | None = Field(None, description="全链目标显热比，(0,1]")
+
+
+class ChainRequest(BaseModel):
+    """多级串联盘管链核算请求：共用进口 + 若干级 + 可选全链目标。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    inlet: StateInput
+    stages: list[ChainStageInput] = Field(..., description="按风道顺序排列的各级")
+    target: ChainTargetInput | None = Field(None, description="全链最终目标（可选）")
+    m_da: float = Field(1.0, gt=0.0, description="干空气质量流量 kg/s")
+
+
+class ChainStageOutput(BaseModel):
+    index: int = Field(..., description="级次，1 起计")
+    name: str | None
+    mode: Literal["direct", "from_outlet", "bf_target_t", "bf_shr", "target_t_shr"]
+    passthrough: bool = Field(..., description="是否纯旁通透传级（本级冷量为零）")
+    inlet: StateOutput
+    outlet: StateOutput
+    adp: StateOutput
+    bf: float
+    loads: LoadsOutput
+    load_share: float = Field(..., description="本级冷量占全链总冷量的份额")
+
+
+class ChainTotalsOutput(BaseModel):
+    q_total: float = Field(..., description="全链总冷量 kW（首级进口→末级出口）")
+    q_sensible: float = Field(..., description="全链总显热 kW")
+    q_latent: float = Field(..., description="全链总潜热 kW")
+    shr: float | None = Field(..., description="全链总体显热比")
+    dehumidification: float = Field(..., description="全链总去湿量 kg/s")
+    m_da: float
+
+
+class ChainOutput(BaseModel):
+    mode: Literal["forward", "verify", "inverse"] = Field(
+        ..., description="forward 逐级正算 / verify 全量给定+目标核验 / inverse 带全链目标反推"
+    )
+    inlet: StateOutput
+    outlet: StateOutput = Field(..., description="整条链的出风（最后一级出口）")
+    stages: list[ChainStageOutput]
+    totals: ChainTotalsOutput
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str
+    stage_index: int | None = Field(
+        None, description="多级链核算时出问题的级次（1 起计）；非链场景为 null"
+    )
 
 
 class ErrorResponse(BaseModel):

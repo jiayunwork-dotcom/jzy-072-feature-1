@@ -32,6 +32,7 @@ from .errors import (
     PsychrometricError,
     ERR_INVALID_REQUEST,
     ERR_INVALID_BF,
+    ERR_INVALID_SHR,
     ERR_NOT_DEHUMIDIFYING,
     ERR_INCONSISTENT_STATE,
     ERR_NO_CONVERGENCE,
@@ -258,11 +259,15 @@ def solve_from_outlet(inlet: AirState, outlet: AirState,
 # 模式 3：目标出风干球温度 + 目标 SHR
 # --------------------------------------------------------------------------
 
-def solve_from_target_t_shr(inlet: AirState, t_out_c: float, shr: float,
-                            m_da: float = 1.0) -> CoilResult:
+def w_out_from_t_shr(inlet: AirState, t_out_c: float, shr: float) -> float:
+    """由目标出风干球温度与目标 SHR 闭式解出口含湿量。
+
+    单级模式 3 与多级链的「全链目标温度+目标SHR」共用这一处闭式解，
+    不允许在链模块里另抄一份。
+    """
     if not (0.0 < shr <= 1.0):
         raise PsychrometricError(
-            f"目标显热比 SHR={shr!r} 不在 (0, 1]", "invalid_shr"
+            f"目标显热比 SHR={shr!r} 不在 (0, 1]", ERR_INVALID_SHR
         )
     d_t = inlet.t_db_c - t_out_c
     if d_t <= 0.0:
@@ -294,6 +299,12 @@ def solve_from_target_t_shr(inlet: AirState, t_out_c: float, shr: float,
         )
     # 构造目标出风状态前必须确认它在饱和曲线内侧
     psy.relative_humidity_from_w(w_out, t_out_c, inlet.p_pa)
+    return w_out
+
+
+def solve_from_target_t_shr(inlet: AirState, t_out_c: float, shr: float,
+                            m_da: float = 1.0) -> CoilResult:
+    w_out = w_out_from_t_shr(inlet, t_out_c, shr)
     outlet = AirState(t_db_c=t_out_c, w=w_out, p_pa=inlet.p_pa)
     return solve_from_outlet(inlet, outlet, m_da)
 

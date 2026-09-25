@@ -16,12 +16,17 @@ class PsychrometricError(ValueError):
         人类可读的错误说明（中文）。
     code:
         机器可读的错误类别，取值见模块级常量。
+    stage_index:
+        多级串联链核算时出问题的级次（1 起计）；单级/非链场景为 None。
+        HTTP 层把它一并放进结构化错误信封，便于定位到哪一级。
     """
 
-    def __init__(self, message: str, code: str = "invalid_state") -> None:
+    def __init__(self, message: str, code: str = "invalid_state", *,
+                 stage_index: int | None = None) -> None:
         super().__init__(message)
         self.message = message
         self.code = code
+        self.stage_index = stage_index
 
 
 # ---- 错误类别常量 ---------------------------------------------------------
@@ -46,3 +51,9 @@ ERR_NO_CONVERGENCE = "no_convergence"
 
 ERR_INCONSISTENT_STATE = "inconsistent_state"
 """给定的进出口状态无法用同一个旁通系数同时加权 W 与 h。"""
+
+ERR_CHAIN_UNDERDETERMINED = "chain_underdetermined"
+"""多级链反推时自由量多于方程数，凑不出唯一解（欠定）。"""
+
+ERR_CHAIN_OVERDETERMINED = "chain_overdetermined"
+"""多级链的各级约束与全链目标彼此矛盾，无论怎么取都到不了目标（过定）。"""

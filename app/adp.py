@@ -142,7 +142,7 @@ def _finish(inlet: AirState, adp: AirState, bf: float, mode: str,
         raise PsychrometricError(
             f"加权得到的出风状态超饱和（{exc.message}）；该 ADP/BF 组合会在"
             "气流中产生雾化，超出旁通模型适用范围",
-            ERR_NOT_DEHUMIDIFYING,
+            ERR_NOT_DEHUMIDIFYING, fog=True,
         ) from exc
 
     loads = breakdown_load(inlet, outlet, m_da)
@@ -258,8 +258,12 @@ def solve_from_outlet(inlet: AirState, outlet: AirState,
 # 模式 3：目标出风干球温度 + 目标 SHR
 # --------------------------------------------------------------------------
 
-def solve_from_target_t_shr(inlet: AirState, t_out_c: float, shr: float,
-                            m_da: float = 1.0) -> CoilResult:
+def outlet_w_from_t_shr(inlet: AirState, t_out_c: float, shr: float) -> float:
+    """由进口状态、目标出风干球温度与目标 SHR 闭式解出出口含湿量。
+
+    单级模式 3 与多级链的“全链目标温度 + 总体目标 SHR”共用这一处实现，
+    含全部合法性闸门：SHR 区间、温差方向、负含湿量、零去湿、超饱和。
+    """
     if not (0.0 < shr <= 1.0):
         raise PsychrometricError(
             f"目标显热比 SHR={shr!r} 不在 (0, 1]", "invalid_shr"
@@ -294,6 +298,12 @@ def solve_from_target_t_shr(inlet: AirState, t_out_c: float, shr: float,
         )
     # 构造目标出风状态前必须确认它在饱和曲线内侧
     psy.relative_humidity_from_w(w_out, t_out_c, inlet.p_pa)
+    return w_out
+
+
+def solve_from_target_t_shr(inlet: AirState, t_out_c: float, shr: float,
+                            m_da: float = 1.0) -> CoilResult:
+    w_out = outlet_w_from_t_shr(inlet, t_out_c, shr)
     outlet = AirState(t_db_c=t_out_c, w=w_out, p_pa=inlet.p_pa)
     return solve_from_outlet(inlet, outlet, m_da)
 

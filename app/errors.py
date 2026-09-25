@@ -16,12 +16,21 @@ class PsychrometricError(ValueError):
         人类可读的错误说明（中文）。
     code:
         机器可读的错误类别，取值见模块级常量。
+    stage:
+        多级串联链中出问题的级次（1 起）；非链场景为 ``None``。
+    fog:
+        是否为“旁通混合弦穿入饱和雾区”类拒绝。链反推的残差求值靠它
+        区分“试探点太冷落入雾区”（按过干处理继续二分）与“定值装置
+        露点本身不合法”（必须原样抛出）。
     """
 
-    def __init__(self, message: str, code: str = "invalid_state") -> None:
+    def __init__(self, message: str, code: str = "invalid_state", *,
+                 stage: int | None = None, fog: bool = False) -> None:
         super().__init__(message)
         self.message = message
         self.code = code
+        self.stage = stage
+        self.fog = fog
 
 
 # ---- 错误类别常量 ---------------------------------------------------------
@@ -46,3 +55,7 @@ ERR_NO_CONVERGENCE = "no_convergence"
 
 ERR_INCONSISTENT_STATE = "inconsistent_state"
 """给定的进出口状态无法用同一个旁通系数同时加权 W 与 h。"""
+
+ERR_INVALID_CHAIN = "invalid_chain"
+"""多级链整体不成立：空链、全链无一级做功、级间气压不一致、全链目标
+欠定/过定/不可达、链级不变量（单调性、合计=分级之和）被破坏等。"""
